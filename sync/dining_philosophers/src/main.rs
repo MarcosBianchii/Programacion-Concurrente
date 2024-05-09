@@ -1,84 +1,111 @@
 use rand::Rng;
-use std::{iter, thread, time::Duration};
+use std::{sync::Arc, thread, time::Duration};
 use std_semaphore::Semaphore;
 
-const NPHILOSOPHERS: i32 = 5;
+struct Table {
+    sticks: Vec<Semaphore>,
+}
 
-/// Each philosopher has his own stick and depending on the initialization
-/// method, will also take the corresponding philosopher's stick.
+impl Table {
+    pub fn new(n: usize) -> Self {
+        Self {
+            sticks: (0..n).map(|_| Semaphore::new(1)).collect(),
+        }
+    }
+}
+
+/// Represents the philosopher's preference when grabbing the
+/// sticks, `Pref::Their` means they will grab their own stick first
+/// and `Pref::Other` means they will grab the next philosopher's
+/// stick first.
+enum Pref {
+    Their,
+    Other,
+}
+
 struct Philosopher {
-    stick: Semaphore,
-    dominant: usize,
+    id: usize,
+    pref: Pref,
+    name: String,
 }
 
 impl Philosopher {
-    fn euclidean_mod(n: i32, modulo: i32) -> usize {
-        ((n % modulo + modulo) % modulo) as usize
-    }
-
-    fn new(n: i32) -> Self {
+    pub fn new(id: usize, pref: Pref, name: &str) -> Self {
         Self {
-            stick: Semaphore::new(1),
-            dominant: Self::euclidean_mod(n, NPHILOSOPHERS),
+            id,
+            pref,
+            name: name.to_string(),
         }
     }
 
-    pub fn left(id: i32) -> Self {
-        Self::new(id - 1)
+    fn log(&self, action: &str) {
+        let Self { id, name, .. } = self;
+        println!("{id}: [{name}] \t{action}");
     }
 
-    pub fn right(id: i32) -> Self {
-        Self::new(id + 1)
+    pub fn think(&self) {
+        self.log("Thinking...");
+        let mut randomizer = rand::thread_rng();
+        thread::sleep(Duration::from_secs(randomizer.gen_range(1..=30)));
     }
 
-    pub fn acquire_stick(&self) {
-        self.stick.acquire();
+    pub fn eat(&self) {
+        self.log("Eating...");
+        thread::sleep(Duration::from_secs(10));
     }
 
-    pub fn release_stick(&self) {
-        self.stick.release();
+    fn sticks<'a>(&self, table: &'a Table) -> (&'a Semaphore, &'a Semaphore) {
+        let &Self { id, .. } = self;
+        let mine = &table.sticks[id];
+        let other = &table.sticks[(id + 1) % table.sticks.len()];
+        (mine, other)
     }
 
-    pub fn dominant_hand_id(&self) -> usize {
-        self.dominant
+    pub fn grab_sticks(&self, table: &Table) {
+        let (mine, other) = self.sticks(table);
+
+        let (first, second) = match self.pref {
+            Pref::Their => (mine, other),
+            Pref::Other => (other, mine),
+        };
+
+        first.acquire();
+        self.log("Acquired first stick");
+
+        second.acquire();
+        self.log("Acquired second stick");
+    }
+
+    pub fn return_sticks(&self, table: &Table) {
+        let (mine, other) = self.sticks(table);
+        mine.release();
+        other.release();
     }
 }
 
 fn main() {
-    // Instance N-1 right-handed and one left-handed.
-    let table: &[_] = iter::once(Philosopher::left(0))
-        .chain((1..NPHILOSOPHERS).map(Philosopher::right))
-        .collect::<Vec<_>>()
-        .leak();
+    let philosophers = [
+        Philosopher::new(0, Pref::Their, "Plato"),
+        Philosopher::new(1, Pref::Their, "Confucius"),
+        Philosopher::new(2, Pref::Their, "Socrates"),
+        Philosopher::new(3, Pref::Their, "Voltaire"),
+        Philosopher::new(4, Pref::Other, "Descartes"),
+    ];
 
-    (0..NPHILOSOPHERS)
-        .map(|id| {
+    let table = Arc::new(Table::new(philosophers.len()));
+
+    philosophers
+        .into_iter()
+        .map(|philosopher| {
+            let table = table.clone();
             thread::spawn(move || loop {
-                let philosopher = &table[id as usize];
-
-                // Wait and think.
-                println!("[{id}] Thinking...");
-                let mut randomizer = rand::thread_rng();
-                thread::sleep(Duration::from_secs(randomizer.gen_range(1..=30)));
-
-                // Acquire both sticks.
-                philosopher.acquire_stick();
-                println!("[{id}] Acquired first stick");
-
-                let other_stick_id = philosopher.dominant_hand_id();
-                table[other_stick_id].acquire_stick();
-                println!("[{id}] Acquired second stick");
-
-                // Eat.
-                println!("[{id}] Eating...");
-                thread::sleep(Duration::from_secs(10));
-
-                // Returns sticks.
-                philosopher.release_stick();
-                table[other_stick_id].release_stick();
+                philosopher.think();
+                philosopher.grab_sticks(&table);
+                philosopher.eat();
+                philosopher.return_sticks(&table);
             })
         })
         .collect::<Vec<_>>()
         .into_iter()
-        .for_each(|philosopher| philosopher.join().unwrap());
+        .for_each(|thread| thread.join().unwrap());
 }
