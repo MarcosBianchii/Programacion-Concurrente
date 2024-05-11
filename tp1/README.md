@@ -14,7 +14,7 @@ La aplicación debe procesar todos los archivos `.jsonl` en el subdirectorio `da
 Debe recibir un único parámetro entero por linea de comandos indicando la cantidad de worker threads con la cual procesar la información
 Debe presentar un resultado final de procesamiento en JSON por consola con el siguiente formato
 
-```js
+```json
 {
     "padron": <número de padron del alumno>,
     "sites": {
