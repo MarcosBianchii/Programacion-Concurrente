@@ -12,24 +12,23 @@ fn main() {
     let producer = {
         let data = data.clone();
         thread::spawn(move || loop {
-            let mut vec = data.lock().unwrap();
-            vec.push("product");
-            drop(vec);
+            data.lock().unwrap().push("product");
             thread::sleep(Duration::from_secs(1));
         })
     };
 
-    let consumer = {
-        let data = data.clone();
-        thread::spawn(move || loop {
+    let consumer = thread::spawn(move || loop {
+        let product = {
             let mut vec = data.lock().unwrap();
-            let product = vec.pop();
-            drop(vec);
+            vec.pop()
+        };
 
-            println!("got: {product:?}");
-            thread::sleep(Duration::from_secs(1));
-        })
-    };
+        if let Some(product) = product {
+            println!("got: {product}");
+        }
+
+        thread::sleep(Duration::from_secs(1));
+    });
 
     for thread in [producer, consumer] {
         thread.join().unwrap();
