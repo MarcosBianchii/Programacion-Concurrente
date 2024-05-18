@@ -38,17 +38,23 @@ impl Semaphore {
 
     /// Acquires a resource and reutrns a `RAII` guard of `Semaphore`.
     pub fn access(&self) -> SemaphoreGuard {
-        self.acquire();
-        SemaphoreGuard { inner: self }
+        SemaphoreGuard::new(self)
     }
 }
 
 struct SemaphoreGuard<'a> {
-    inner: &'a Semaphore,
+    sem: &'a Semaphore,
+}
+
+impl<'a> SemaphoreGuard<'a> {
+    fn new(sem: &'a Semaphore) -> Self {
+        sem.acquire();
+        Self { sem }
+    }
 }
 
 impl<'a> Drop for SemaphoreGuard<'_> {
     fn drop(&mut self) {
-        self.inner.release();
+        self.sem.release();
     }
 }
