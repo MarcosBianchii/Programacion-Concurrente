@@ -31,7 +31,7 @@ impl<T> RwLock<T> {
         }
     }
 
-    pub fn read(&self) -> ReadGuard<'_, T> {
+    pub fn read(&self) -> ReadGuard<T> {
         let entities = self.lock.lock().unwrap();
 
         let mut entities = self
@@ -43,7 +43,7 @@ impl<T> RwLock<T> {
         ReadGuard::new(self)
     }
 
-    pub fn write(&self) -> WriteGuard<'_, T> {
+    pub fn write(&self) -> WriteGuard<T> {
         let mut entities = self.lock.lock().unwrap();
         entities.waiters += 1;
 
@@ -74,7 +74,7 @@ impl<'a, T> ReadGuard<'a, T> {
     }
 }
 
-impl<'a, T> Deref for ReadGuard<'_, T> {
+impl<T> Deref for ReadGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -82,7 +82,7 @@ impl<'a, T> Deref for ReadGuard<'_, T> {
     }
 }
 
-impl<'a, T> Drop for ReadGuard<'_, T> {
+impl<T> Drop for ReadGuard<'_, T> {
     fn drop(&mut self) {
         let mut entities = self.lock.lock().unwrap();
         entities.readers -= 1;
@@ -111,7 +111,7 @@ impl<'a, T> WriteGuard<'a, T> {
     }
 }
 
-impl<'a, T> Deref for WriteGuard<'_, T> {
+impl<T> Deref for WriteGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -119,13 +119,13 @@ impl<'a, T> Deref for WriteGuard<'_, T> {
     }
 }
 
-impl<'a, T> DerefMut for WriteGuard<'_, T> {
+impl<T> DerefMut for WriteGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { self.data.as_mut() }
     }
 }
 
-impl<'a, T> Drop for WriteGuard<'_, T> {
+impl<T> Drop for WriteGuard<'_, T> {
     fn drop(&mut self) {
         let mut entities = self.lock.lock().unwrap();
         entities.writing = false;
