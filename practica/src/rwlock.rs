@@ -7,6 +7,14 @@ use std::{
     sync::{Condvar, Mutex},
 };
 
+struct PoisonError<T> {
+    guard: T,
+}
+
+impl<T> PoisonError<T> {}
+
+type LockResult<T> = Result<T, PoisonError<T>>;
+
 #[derive(Default)]
 struct Entities {
     readers: usize,
@@ -31,7 +39,7 @@ impl<T> RwLock<T> {
         }
     }
 
-    pub fn read(&self) -> ReadGuard<T> {
+    pub fn read(&self) -> LockResult<RwLockReadGuard<T>> {
         let entities = self.lock.lock().unwrap();
 
         let mut entities = self
@@ -40,10 +48,10 @@ impl<T> RwLock<T> {
             .unwrap();
 
         entities.readers += 1;
-        ReadGuard::new(self)
+        RwLockReadGuard::new(self)
     }
 
-    pub fn write(&self) -> WriteGuard<T> {
+    pub fn write(&self) -> LockResult<RwLockWriteGuard<T>> {
         let mut entities = self.lock.lock().unwrap();
         entities.waiters += 1;
 
@@ -54,27 +62,27 @@ impl<T> RwLock<T> {
 
         entities.writing = true;
         entities.waiters -= 1;
-        WriteGuard::new(self)
+        RwLockWriteGuard::new(self)
     }
 }
 
-struct ReadGuard<'a, T> {
+struct RwLockReadGuard<'a, T> {
     lock: &'a Mutex<Entities>,
     data: NonNull<T>,
     wcvar: &'a Condvar,
 }
 
-impl<'a, T> ReadGuard<'a, T> {
-    fn new(lock: &'a RwLock<T>) -> Self {
-        Self {
+impl<'a, T> RwLockReadGuard<'a, T> {
+    fn new(lock: &'a RwLock<T>) -> LockResult<Self> {
+        Ok(Self {
             lock: &lock.lock,
             data: unsafe { NonNull::new_unchecked(lock.data.get()) },
             wcvar: &lock.wcvar,
-        }
+        })
     }
 }
 
-impl<T> Deref for ReadGuard<'_, T> {
+impl<T> Deref for RwLockReadGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -82,7 +90,7 @@ impl<T> Deref for ReadGuard<'_, T> {
     }
 }
 
-impl<T> Drop for ReadGuard<'_, T> {
+impl<T> Drop for RwLockReadGuard<'_, T> {
     fn drop(&mut self) {
         let mut entities = self.lock.lock().unwrap();
         entities.readers -= 1;
@@ -93,25 +101,25 @@ impl<T> Drop for ReadGuard<'_, T> {
     }
 }
 
-struct WriteGuard<'a, T> {
+struct RwLockWriteGuard<'a, T> {
     lock: &'a Mutex<Entities>,
     data: NonNull<T>,
     rcvar: &'a Condvar,
     wcvar: &'a Condvar,
 }
 
-impl<'a, T> WriteGuard<'a, T> {
-    fn new(lock: &'a RwLock<T>) -> Self {
-        Self {
+impl<'a, T> RwLockWriteGuard<'a, T> {
+    fn new(lock: &'a RwLock<T>) -> LockResult<Self> {
+        Ok(Self {
             lock: &lock.lock,
             data: unsafe { NonNull::new_unchecked(lock.data.get()) },
             rcvar: &lock.rcvar,
             wcvar: &lock.wcvar,
-        }
+        })
     }
 }
 
-impl<T> Deref for WriteGuard<'_, T> {
+impl<T> Deref for RwLockWriteGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -119,13 +127,13 @@ impl<T> Deref for WriteGuard<'_, T> {
     }
 }
 
-impl<T> DerefMut for WriteGuard<'_, T> {
+impl<T> DerefMut for RwLockWriteGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { self.data.as_mut() }
     }
 }
 
-impl<T> Drop for WriteGuard<'_, T> {
+impl<T> Drop for RwLockWriteGuard<'_, T> {
     fn drop(&mut self) {
         let mut entities = self.lock.lock().unwrap();
         entities.writing = false;

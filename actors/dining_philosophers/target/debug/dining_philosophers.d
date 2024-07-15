@@ -1,0 +1,1 @@
+/home/vinki/Documents/concurrentes/actors/dining_philosophers/target/debug/dining_philosophers: /home/vinki/Documents/concurrentes/actors/dining_philosophers/src/main.rs /home/vinki/Documents/concurrentes/actors/dining_philosophers/src/phil.rs /home/vinki/Documents/concurrentes/actors/dining_philosophers/src/table.rs
